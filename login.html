@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YUE 账号</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI","PingFang SC",sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);overflow:hidden}
+.bg-blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.6;animation:float 8s ease-in-out infinite;z-index:0}
+.bg-blob:nth-child(1){width:400px;height:400px;background:#7b2ff7;top:-100px;left:-100px}
+.bg-blob:nth-child(2){width:350px;height:350px;background:#00d2ff;bottom:-80px;right:-80px;animation-delay:-3s}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(30px,-20px) scale(1.05)}}
+.glass-card{position:relative;z-index:1;width:420px;padding:40px 36px;border-radius:24px;background:rgba(255,255,255,.08);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+h1{text-align:center;color:#fff;font-size:28px;margin-bottom:8px}
+.subtitle{text-align:center;color:rgba(255,255,255,.5);font-size:14px;margin-bottom:28px}
+.tabs{display:flex;margin-bottom:24px;border-radius:12px;background:rgba(255,255,255,.06);overflow:hidden}
+.tabs button{flex:1;padding:10px;border:none;background:transparent;color:rgba(255,255,255,.5);font-size:15px;cursor:pointer;transition:.3s}
+.tabs button.active{background:rgba(255,255,255,.15);color:#fff}
+.form-group{margin-bottom:18px}
+.form-group input{width:100%;padding:14px 16px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.06);color:#fff;font-size:15px;outline:none}
+.form-group input:focus{border-color:rgba(123,47,247,.6)}
+.submit-btn{width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#7b2ff7,#00d2ff);color:#fff;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px}
+.msg{text-align:center;margin-top:14px;font-size:14px;min-height:20px}
+.msg.ok{color:#4ade80}.msg.err{color:#f87171}
+.form-panel{display:none}.form-panel.active{display:block}
+.oauth-badge{display:inline-block;margin:0 auto 20px;padding:6px 16px;border-radius:20px;background:rgba(0,210,255,.15);border:1px solid rgba(0,210,255,.3);color:#00d2ff;font-size:13px;text-align:center}
+.info-row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-size:14px}
+.info-label{color:rgba(255,255,255,.5)}
+.oauth-hint{color:rgba(255,255,255,.45);font-size:12px;margin-top:12px;line-height:1.6}
+.manage-tabs{display:flex;margin-bottom:24px;border-radius:12px;background:rgba(255,255,255,.06);overflow:hidden}
+.manage-tabs button{flex:1;padding:10px;border:none;background:transparent;color:rgba(255,255,255,.5);font-size:14px;cursor:pointer;transition:.3s}
+.manage-tabs button.active{background:rgba(255,255,255,.15);color:#fff}
+</style>
+</head>
+<body>
+<div class="bg-blob"></div><div class="bg-blob"></div>
+<div class="glass-card">
+<script>window.YUE_CONFIG={viewMode:"<!-- VIEW_MODE -->",oauthSite:"<!-- OAUTH_SITE -->",redirectUrl:"<!-- REDIRECT_URL -->"};</script>
+
+<!-- 普通模式 -->
+<div id="normal-view" style="display:none;">
+  <h1>YUE 账号</h1><p class="subtitle">统一身份认证</p>
+  
+  <!-- 登录/注册表单 -->
+  <div id="auth-section">
+    <div class="tabs"><button class="active" onclick="switchTab('login')">登录</button><button onclick="switchTab('register')">注册</button></div>
+    <div id="panel-login" class="form-panel active">
+      <div class="form-group"><input id="login-user" placeholder="用户名"></div>
+      <div class="form-group"><input id="login-pass" type="password" placeholder="密码"></div>
+      <button class="submit-btn" onclick="doNormalLogin()">登 录</button>
+    </div>
+    <div id="panel-register" class="form-panel">
+      <div class="form-group"><input id="reg-user" placeholder="用户名"></div>
+      <div class="form-group"><input id="reg-pass" type="password" placeholder="密码"></div>
+      <button class="submit-btn" onclick="doNormalRegister()">注 册</button>
+    </div>
+  </div>
+
+  <!-- 管理面板 -->
+  <div id="manage-section" style="display:none;">
+    <div class="manage-tabs">
+      <button class="active" onclick="switchManage('info')">账号信息</button>
+      <button onclick="switchManage('password')">修改密码</button>
+    </div>
+    <div id="m-panel-info" class="form-panel active">
+      <div class="info-row"><span class="info-label">用户名</span><span id="info-username">-</span></div>
+      <div class="info-row"><span class="info-label">注册时间</span><span id="info-created">-</span></div>
+      <button class="submit-btn" style="margin-top:24px;background:rgba(255,255,255,.1)" onclick="logout()">退出登录</button>
+    </div>
+    <div id="m-panel-password" class="form-panel">
+      <div class="form-group"><input id="old-pwd" type="password" placeholder="旧密码"></div>
+      <div class="form-group"><input id="new-pwd" type="password" placeholder="新密码"></div>
+      <button class="submit-btn" onclick="changePassword()">确认修改</button>
+    </div>
+  </div>
+</div>
+
+<!-- 授权模式 -->
+<div id="oauth-view" style="display:none;">
+  <div class="oauth-badge">🔗 为 <span id="oauth-site-name"></span> 授权</div>
+  <h1>YUE 账号授权</h1><p class="subtitle">登录或注册后将自动跳转回目标网站</p>
+  <div id="oauth-auth-section" style="display:none;">
+    <div class="tabs"><button class="active" onclick="switchOAuth('login')">登录</button><button onclick="switchOAuth('register')">注册</button></div>
+    <div id="oauth-panel-login" class="form-panel active">
+      <div class="form-group"><input id="oauth-user" placeholder="用户名"></div>
+      <div class="form-group"><input id="oauth-pass" type="password" placeholder="密码"></div>
+      <button class="submit-btn" onclick="doOAuthLogin()">授权并登录</button>
+    </div>
+    <div id="oauth-panel-register" class="form-panel">
+      <div class="form-group"><input id="oauth-reg-user" placeholder="新用户名"></div>
+      <div class="form-group"><input id="oauth-reg-pass" type="password" placeholder="新密码"></div>
+      <button class="submit-btn" onclick="doOAuthRegister()">注册并授权</button>
+      <p class="oauth-hint">💡 注册成功后将直接跳转回目标网站，无需二次登录</p>
+    </div>
+  </div>
+  <div id="oauth-confirm-section" style="display:none;">
+    <div class="info-row"><span class="info-label">YUE 账号</span><span id="oauth-uname"></span></div>
+    <div class="info-row"><span class="info-label">目标网站</span><span id="oauth-target"></span></div>
+    <button class="submit-btn" style="margin-top:20px" onclick="confirmOAuth()">确认授权并跳转</button>
+  </div>
+</div>
+<p class="msg" id="msg"></p>
+</div>
+<script>
+const CFG=window.YUE_CONFIG;
+let OAUTH_TOKEN="";
+function showMsg(t,ok){const e=document.getElementById("msg");e.textContent=t;e.className="msg "+(ok?"ok":"err")}
+async function api(path,body,auth=false){
+  const h={"Content-Type":"application/json"};
+  if(auth){const t=localStorage.getItem("yue_token");if(t)h["Authorization"]="Bearer "+t;}
+  return(await fetch(path,{method:body?"POST":"GET",headers:h,body:body?JSON.stringify(body):undefined})).json();
+}
+
+// 统一跳转出口：仅授权模式使用
+function redirectWithToken(token){
+  if(!CFG.redirectUrl)return showMsg("缺少回调地址",false);
+  localStorage.setItem("yue_token",token);
+  showMsg("授权成功，正在跳转…",true);
+  setTimeout(()=>{location.href=CFG.redirectUrl+(CFG.redirectUrl.includes("?")?"&":"?")+"token="+encodeURIComponent(token)},600);
+}
+
+// 加载用户信息并切换到管理面板
+async function loadManagePanel(){
+  const d=await api("/api/user/info",null,true);
+  if(d.code===200){
+    document.getElementById("auth-section").style.display="none";
+    document.getElementById("manage-section").style.display="block";
+    document.getElementById("info-username").textContent=d.data.username;
+    document.getElementById("info-created").textContent=d.data.created_at;
+  }else{
+    localStorage.removeItem("yue_token");
+    document.getElementById("auth-section").style.display="block";
+    document.getElementById("manage-section").style.display="none";
+  }
+}
+
+(async()=>{
+  if(CFG.viewMode==="oauth"){
+    document.getElementById("oauth-view").style.display="block";
+    document.getElementById("oauth-site-name").textContent=CFG.oauthSite;
+    document.getElementById("oauth-target").textContent=CFG.oauthSite;
+    document.title="YUE 账号授权";
+    const token=localStorage.getItem("yue_token");
+    if(token){
+      try{const d=await api("/api/user/info",null,true);if(d.code===200){
+        document.getElementById("oauth-confirm-section").style.display="block";
+        document.getElementById("oauth-uname").textContent=d.data.username;
+        OAUTH_TOKEN=token;return;
+      }}catch{}
+      localStorage.removeItem("yue_token");
+    }
+    document.getElementById("oauth-auth-section").style.display="block";
+  }else{
+    document.getElementById("normal-view").style.display="block";
+    const token=localStorage.getItem("yue_token");
+    if(token){
+      try{
+        const d=await api("/api/user/info",null,true);
+        if(d.code===200){ await loadManagePanel(); }
+        else{ localStorage.removeItem("yue_token"); }
+      }catch{ localStorage.removeItem("yue_token"); }
+    }
+  }
+})();
+
+// 普通模式
+function switchTab(t){
+  document.querySelectorAll("#auth-section .tabs button").forEach((b,i)=>b.classList.toggle("active",t==="login"?i===0:i===1));
+  document.getElementById("panel-login").classList.toggle("active",t==="login");
+  document.getElementById("panel-register").classList.toggle("active",t==="register");
+  showMsg("",true);
+}
+function switchManage(t){
+  const tabs=["info","password"];
+  document.querySelectorAll(".manage-tabs button").forEach((b,i)=>b.classList.toggle("active",tabs[i]===t));
+  tabs.forEach(tab=>document.getElementById("m-panel-"+tab).classList.toggle("active",tab===t));
+  showMsg("",true);
+}
+async function doNormalLogin(){
+  const u=document.getElementById("login-user").value.trim(),p=document.getElementById("login-pass").value.trim();
+  if(!u||!p)return showMsg("请填写完整",false);
+  const d=await api("/api/login",{username:u,password:p});
+  if(d.code!==200)return showMsg(d.message||"登录失败",false);
+  localStorage.setItem("yue_token",d.data.token);
+  showMsg("登录成功",true);
+  // ✅ 修复：登录成功后加载管理面板
+  setTimeout(()=>loadManagePanel(),600);
+}
+async function doNormalRegister(){
+  const u=document.getElementById("reg-user").value.trim(),p=document.getElementById("reg-pass").value.trim();
+  if(!u||!p)return showMsg("请填写完整",false);
+  const d=await api("/api/register",{username:u,password:p});
+  showMsg(d.message,d.code===200||d.code===201);
+  if(d.code===200||d.code===201)setTimeout(()=>switchTab("login"),1200);
+}
+async function changePassword(){
+  const o=document.getElementById("old-pwd").value,n=document.getElementById("new-pwd").value;
+  if(!o||!n)return showMsg("请填写完整",false);
+  // 注意：后端未实现此接口，此处仅为前端逻辑占位
+  showMsg("修改密码功能待后端补充",false);
+}
+function logout(){
+  localStorage.removeItem("yue_token");
+  document.getElementById("manage-section").style.display="none";
+  document.getElementById("auth-section").style.display="block";
+  showMsg("已退出登录",true);
+}
+
+// 授权模式
+function switchOAuth(t){
+  document.querySelectorAll("#oauth-auth-section .tabs button").forEach((b,i)=>b.classList.toggle("active",t==="login"?i===0:i===1));
+  document.getElementById("oauth-panel-login").classList.toggle("active",t==="login");
+  document.getElementById("oauth-panel-register").classList.toggle("active",t==="register");
+  showMsg("",true);
+}
+async function doOAuthLogin(){
+  const u=document.getElementById("oauth-user").value.trim(),p=document.getElementById("oauth-pass").value.trim();
+  if(!u||!p)return showMsg("请填写完整",false);
+  const d=await api("/api/login",{username:u,password:p});
+  if(d.code!==200)return showMsg(d.message||"登录失败",false);
+  redirectWithToken(d.data.token);
+}
+async function doOAuthRegister(){
+  const u=document.getElementById("oauth-reg-user").value.trim(),p=document.getElementById("oauth-reg-pass").value.trim();
+  if(!u||!p)return showMsg("请填写完整",false);
+  const reg=await api("/api/register",{username:u,password:p});
+  if(reg.code!==200&&reg.code!==201)return showMsg(reg.message,false);
+  const login=await api("/api/login",{username:u,password:p});
+  if(login.code!==200)return showMsg("注册成功但自动登录失败",false);
+  redirectWithToken(login.data.token);
+}
+function confirmOAuth(){redirectWithToken(OAUTH_TOKEN||localStorage.getItem("yue_token"))}
+</script>
+</body></html>
