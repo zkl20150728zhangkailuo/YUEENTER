@@ -30,6 +30,7 @@ h1{text-align:center;color:#fff;font-size:28px;margin-bottom:8px}
 .manage-tabs{display:flex;margin-bottom:24px;border-radius:12px;background:rgba(255,255,255,.06);overflow:hidden}
 .manage-tabs button{flex:1;padding:10px;border:none;background:transparent;color:rgba(255,255,255,.5);font-size:14px;cursor:pointer;transition:.3s}
 .manage-tabs button.active{background:rgba(255,255,255,.15);color:#fff}
+.danger-btn{background:linear-gradient(135deg,#e74c3c,#c0392b)!important}
 </style>
 </head>
 <body>
@@ -40,7 +41,7 @@ h1{text-align:center;color:#fff;font-size:28px;margin-bottom:8px}
 <!-- 普通模式 -->
 <div id="normal-view" style="display:none;">
   <h1>YUE 账号</h1><p class="subtitle">统一身份认证</p>
-  
+
   <!-- 登录/注册表单 -->
   <div id="auth-section">
     <div class="tabs"><button class="active" onclick="switchTab('login')">登录</button><button onclick="switchTab('register')">注册</button></div>
@@ -66,10 +67,11 @@ h1{text-align:center;color:#fff;font-size:28px;margin-bottom:8px}
       <div class="info-row"><span class="info-label">用户名</span><span id="info-username">-</span></div>
       <div class="info-row"><span class="info-label">注册时间</span><span id="info-created">-</span></div>
       <button class="submit-btn" style="margin-top:24px;background:rgba(255,255,255,.1)" onclick="logout()">退出登录</button>
+      <button class="submit-btn danger-btn" style="margin-top:12px" onclick="deleteAccount()">注销账号</button>
     </div>
     <div id="m-panel-password" class="form-panel">
       <div class="form-group"><input id="old-pwd" type="password" placeholder="旧密码"></div>
-      <div class="form-group"><input id="new-pwd" type="password" placeholder="新密码"></div>
+      <div class="form-group"><input id="new-pwd" type="password" placeholder="新密码（至少6位）"></div>
       <button class="submit-btn" onclick="changePassword()">确认修改</button>
     </div>
   </div>
@@ -183,7 +185,6 @@ async function doNormalLogin(){
   if(d.code!==200)return showMsg(d.message||"登录失败",false);
   localStorage.setItem("yue_token",d.data.token);
   showMsg("登录成功",true);
-  // ✅ 修复：登录成功后加载管理面板
   setTimeout(()=>loadManagePanel(),600);
 }
 async function doNormalRegister(){
@@ -193,17 +194,40 @@ async function doNormalRegister(){
   showMsg(d.message,d.code===200||d.code===201);
   if(d.code===200||d.code===201)setTimeout(()=>switchTab("login"),1200);
 }
+
+// ========== 新增：修改密码（调用后端接口） ==========
 async function changePassword(){
-  const o=document.getElementById("old-pwd").value,n=document.getElementById("new-pwd").value;
+  const o=document.getElementById("old-pwd").value.trim();
+  const n=document.getElementById("new-pwd").value.trim();
   if(!o||!n)return showMsg("请填写完整",false);
-  // 注意：后端未实现此接口，此处仅为前端逻辑占位
-  showMsg("修改密码功能待后端补充",false);
+  const d=await api("/api/change-password",{old_password:o,new_password:n},true);
+  showMsg(d.message,d.code===200);
+  if(d.code===200){
+    document.getElementById("old-pwd").value="";
+    document.getElementById("new-pwd").value="";
+    setTimeout(()=>logout(),1500);
+  }
 }
+
 function logout(){
   localStorage.removeItem("yue_token");
   document.getElementById("manage-section").style.display="none";
   document.getElementById("auth-section").style.display="block";
   showMsg("已退出登录",true);
+}
+
+// ========== 新增：注销账号（调用后端接口） ==========
+async function deleteAccount(){
+  if(!confirm("确定要注销账号吗？此操作不可恢复！"))return;
+  const p=prompt("请输入你的密码以确认注销：");
+  if(!p)return showMsg("已取消",false);
+  const d=await api("/api/delete-account",{password:p},true);
+  showMsg(d.message,d.code===200);
+  if(d.code===200){
+    localStorage.removeItem("yue_token");
+    document.getElementById("manage-section").style.display="none";
+    document.getElementById("auth-section").style.display="block";
+  }
 }
 
 // 授权模式
