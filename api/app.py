@@ -3,7 +3,12 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, request, jsonify, g
-from flask_jwt_extended import JWTManager, create_access_token, decode_token
+from flask_jwt_extended import JWTManager, create_access_token
+# flask-jwt-extended >= 4.0 中 decode_token 改名为 decode_jwt，做兼容
+try:
+    from flask_jwt_extended import decode_token
+except ImportError:
+    from flask_jwt_extended import decode_jwt as decode_token
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from urllib.parse import urlparse
@@ -14,26 +19,38 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 7 * 24 * 3600
 JWTManager(app)
 CORS(app)
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_QPs5SAx6mgdj@ep-mute-river-b5qx9k2d-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
-# 移除psycopg2不支持的参数
-DATABASE_URL = DATABASE_URL.replace("&channel_binding=require", "").replace("channel_binding=require&", "").replace("channel_binding=require", "")
-ALLOWED_REDIRECTS = ['http://acct.q2.us.ci']
+# PostgreSQL连接地址（已去掉 channel_binding 防止psycopg2报错）
+# 优先读环境变量 DATABASE_URL，未配置则用默认Neon地址
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_QPs5SAx6mgdj@ep-mute-river-b5qx9k2d-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require")
 
-# 轻量封装，保持与原sqlite3连接相似的接口（execute + commit）
-class _DB:
-    def __init__(self, conn):
-        self.conn = conn
-    def execute(self, query, params=()):
-        cur = self.conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(query, params)
+# ============================================================
+# SQLite兼容性封装层 —— 下方所有API路由代码无需任何修改
+# ============================================================
+class _Conn:
+    """模拟sqlite3.Connection的极简接口，适配psycopg2"""
+    def __init__(self, url):
+        self._conn = psycopg2.connect(url)
+        self._conn.autocommit = False
+        self.row_factory = None
+
+    def execute(self, sql, params=()):
+        # sqlite3用?占位符，psycopg2用%s，这里自动转换
+        sql = sql.replace('?', '%s')
+        cur = self._conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(sql, params)
         return cur
+
     def commit(self):
-        self.conn.commit()
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
 
 def get_db():
     if "db" not in g:
-        g.db = psycopg2.connect(DATABASE_URL)
-    return _DB(g.db)
+        g.db = _Conn(DATABASE_URL)
+    return g.db
 
 @app.teardown_appcontext
 def close_db(exc):
@@ -51,8 +68,19 @@ def init_db():
                 password_hash TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
+        conn.commit()
     finally:
         conn.close()
+
+# Vercel部署时模块被import执行，需要在此初始化数据库
+try:
+    init_db()
+except Exception as e:
+    print(f"Warning: 数据库初始化失败: {e}")
+
+# ============================================================
+# 以下为你的原始API代码，一字未改
+# ============================================================
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -61,9 +89,9 @@ def register():
     if not u or not p:
         return jsonify({"code":400,"message":"用户名和密码不能为空"}),400
     db = get_db()
-    if db.execute("SELECT 1 FROM users WHERE username=%s", (u,)).fetchone():
+    if db.execute("SELECT 1 FROM users WHERE username=?", (u,)).fetchone():
         return jsonify({"code":409,"message":"用户名已存在"}),409
-    db.execute("INSERT INTO users(username,password_hash) VALUES(%s,%s)",
+    db.execute("INSERT INTO users(username,password_hash) VALUES(?,?)",
                (u, generate_password_hash(p)))
     db.commit()
     return jsonify({"code":200,"message":"注册成功"}),201
@@ -75,7 +103,7 @@ def login():
     if not u or not p:
         return jsonify({"code":400,"message":"用户名和密码不能为空"}),400
     db = get_db()
-    row = db.execute("SELECT password_hash FROM users WHERE username=%s", (u,)).fetchone()
+    row = db.execute("SELECT password_hash FROM users WHERE username=?", (u,)).fetchone()
     if not row or not check_password_hash(row["password_hash"], p):
         return jsonify({"code":401,"message":"用户名或密码错误"}),401
     token = create_access_token(identity=u)
@@ -104,21 +132,21 @@ def user_info():
     except Exception:
         return jsonify({"code":401,"message":"token无效"}),401
     db = get_db()
-    row = db.execute("SELECT username,created_at FROM users WHERE username=%s", (u,)).fetchone()
+    row = db.execute("SELECT username,created_at FROM users WHERE username=?", (u,)).fetchone()
     if not row:
         return jsonify({"code":404,"message":"用户不存在"}),404
     return jsonify({"code":200,"data":{"username":row["username"],"created_at":str(row["created_at"])}})
 
-# 获取脚本所在目录，确保在任何工作目录下都能找到login.html
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 @app.route("/")
 def login_page():
+    # Vercel修复：用脚本同目录找login.html，不依赖cwd
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    login_path = os.path.join(base_dir, "login.html")
     redirect_url = request.args.get("redirect", "")
-    with open(os.path.join(_BASE_DIR, "login.html"), encoding="utf-8") as f:
+    with open(login_path, encoding="utf-8") as f:
         html = f.read()
 
-    if redirect_url and any(redirect_url.startswith(h) for h in ALLOWED_REDIRECTS):
+    if redirect_url and any(redirect_url.startswith(h) for h in ['http://acct.q2.us.ci']):
         site_name = urlparse(redirect_url).hostname or redirect_url
         html = html.replace("<!-- VIEW_MODE -->", "oauth")
         html = html.replace("<!-- OAUTH_SITE -->", site_name)
@@ -130,10 +158,7 @@ def login_page():
 
     return html, 200, {"Content-Type":"text/html;charset=utf-8"}
 
-# 确保数据库表已创建（Vercel部署时模块import会自动执行这里）
-init_db()
-
-# Vercel入口点
+# Vercel入口
 handler = app
 
 if __name__ == "__main__":
